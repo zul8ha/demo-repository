@@ -15,7 +15,7 @@ env:
 
 jobs:
   approved:
-    if: contains(github.event.pull_request.labels.*.name, 'approved')
+    if: github.event.action == 'labeled' && github.event.label.name == 'approved'
     runs-on: ubuntu-latest
     steps:
     - name: Check actor is org member
