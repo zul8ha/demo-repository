@@ -9,7 +9,7 @@ permissions:
   pull-requests: read
   contents: read
 env:
-  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GH_TOKEN: ${{ secrets.READ_ORG_TOKEN }}
 
 jobs:
   approved:
