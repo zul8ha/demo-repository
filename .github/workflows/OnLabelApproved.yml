@@ -2,34 +2,77 @@ name: Approve fork PR workflows on label
 
 on:
   pull_request_target:
-    types: [labeled]
+    types: [labeled]   # fires when ANY label is added to a PR in this repo
 
 permissions:
   actions: write
   pull-requests: read
   contents: read
+  issues: read
 
 env:
-  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  ORG: duckdb                      # <-- your org
+  READ_ORG_TOKEN: ${{ secrets.READ_ORG_TOKEN }}  # must have read:org (+ SSO if used)
 
 jobs:
-  approve:
-    if: contains(github.event.pull_request.labels.name, 'approved') && github.event.pull_request.state == 'approved'
+  diag_and_gate:
     runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.decide.outputs.ok }}
     steps:
-      - name: Check actor is org member
+      # See exactly what was in the event
+      - name: Dump event payload (temporary)
+        run: |
+          echo "event_name=${{ github.event_name }}"
+          echo "action=${{ github.event.action }}"
+          echo "trigger_label=${{ github.event.label.name }}"
+          echo "actor=${{ github.actor }}"
+          echo "repo=${{ github.repository }}"
+          echo "pr=${{ github.event.pull_request.number }}"
+          echo "---- RAW EVENT ----"
+          cat "$GITHUB_EVENT_PATH"
+
+      - name: Check PR currently has label 'approved'
+        id: haslabel
+        run: |
+          PR=${{ github.event.pull_request.number }}
+          labels=$(curl -sS -H "Authorization: Bearer ${{ github.token }}" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${PR}/labels" \
+            | jq -r '.[].name | ascii_downcase')
+          echo "labels now on PR:"
+          echo "$labels"
+          if echo "$labels" | grep -Fx 'approved' >/dev/null; then
+            echo "ok_label=true" >> $GITHUB_OUTPUT
+          else
+            echo "ok_label=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check labeler is org member (public or private)
         id: orgcheck
         run: |
-            resp=$(curl -sS \
-            -H "Authorization: Bearer ${{ env.GH_TOKEN }}" \
+          resp=$(curl -sS \
+            -H "Authorization: Bearer $READ_ORG_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/orgs/duckdb/memberships/${{ github.actor }})
+            "https://api.github.com/orgs/${{ env.ORG }}/memberships/${{ github.actor }}")
+          state=$(jq -r '.state // empty' <<<"$resp")
+          echo "membership_state=$state"
+          if [ "$state" = "active" ]; then
+            echo "ok_actor=true" >> $GITHUB_OUTPUT
+          else
+            echo "ok_actor=false" >> $GITHUB_OUTPUT
+          fi
 
-            state=$(jq -r '.state // empty' <<< $resp)
-            if [ "$state" != "active" ]; then
-                echo "Not an org member (or token lacks read:org)"; exit 1
-            fi
-  code-quality:
-    needs: approve 
+      - name: Decide
+        id: decide
+        run: |
+          if [ "${{ steps.haslabel.outputs.ok_label }}" = "true" ] && [ "${{ steps.orgcheck.outputs.ok_actor }}" = "true" ]; then
+            echo "ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "ok=false" >> $GITHUB_OUTPUT
+          fi
+
+  example:
+    needs: diag_and_gate
+    if: needs.diag_and_gate.outputs.ok == 'true'
     uses: ./.github/workflows/Example.yml
     secrets: inherit
