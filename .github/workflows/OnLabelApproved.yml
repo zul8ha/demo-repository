@@ -11,7 +11,7 @@ permissions:
   issues: read
 
 env:
-  ORG: duckdb                      # <-- your org
+  ORG: zul8ha                      # <-- your org
   READ_ORG_TOKEN: ${{ secrets.READ_ORG_TOKEN }}  # must have read:org (+ SSO if used)
 
 jobs:
