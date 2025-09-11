@@ -25,7 +25,7 @@ jobs:
           https://api.github.com/orgs/zul8ha/memberships/${{ github.actor }})
 
           state=$(jq -r '.state // empty' <<< $resp)
-          if [ "$state" != "active" ]; then
+          if [ $state != "active" ]; then
               echo "Not an org member (or token lacks read:org)"; exit 1
           fi
   # if: contains(github.event.pull_request.labels.*.name, 'approved') && github.event.pull_request.state == 'approved'
