@@ -1,8 +1,8 @@
 name: Approve fork PR workflows on label
 
 on:
-  pull_request_review:
-    types: [submitted]
+  # pull_request_review:
+  #   types: [submitted]
   pull_request_target:
     types: [labeled]
     
@@ -15,7 +15,7 @@ env:
 
 jobs:
   approved:
-    if: contains(github.event.pull_request.labels.*.name, 'approved') && github.event.review.state == 'approved'
+    if: contains(github.event.pull_request.labels.*.name, 'approved')
     runs-on: ubuntu-latest
     steps:
     - name: Check actor is org member
