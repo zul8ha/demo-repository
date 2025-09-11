@@ -1,35 +1,39 @@
 name: Approve fork PR workflows on label
 
 on:
+  # pull_request_review:
+  #   types: [submitted]
   pull_request_target:
     types: [labeled]
-
+    
 permissions:
   actions: write
   pull-requests: read
   contents: read
-
 env:
-  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GH_TOKEN: ${{ secrets.READ_ORG_TOKEN }}
 
 jobs:
-  approve:
-    if: contains(github.event.pull_request.labels.*.name, 'approved') && github.event.pull_request.state == 'approved'
+  approved:
+    if: github.event.action == 'labeled' && github.event.label.name == 'approved'
     runs-on: ubuntu-latest
     steps:
-      - name: Check actor is org member
-        id: orgcheck
-        run: |
-            resp=$(curl -sS \
-            -H "Authorization: Bearer ${{ env.GH_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/orgs/duckdb/memberships/${{ github.actor }})
+    - name: Check actor is org member
+      id: orgcheck
+      run: |
+          resp=$(curl -sS \
+          -H "Authorization: Bearer ${{ env.GH_TOKEN }}" \
+          -H "Accept: application/vnd.github+json" \
+          https://api.github.com/orgs/zul8ha/memberships/${{ github.actor }})
 
-            state=$(jq -r '.state // empty' <<< $resp)
-            if [ "$state" != "active" ]; then
-                echo "Not an org member (or token lacks read:org)"; exit 1
-            fi
-  code-quality:
-    needs: approve 
+          state=$(jq -r '.state // empty' <<< $resp)
+          echo $state
+          if [ $state != "active" ]; then
+              echo "Not an org member (or token lacks read:org)"; exit 1
+          fi
+
+  example:
+    needs: approved
+    if: ${{ needs.approved.result == 'success' }}
     uses: ./.github/workflows/Example.yml
     secrets: inherit
