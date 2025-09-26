@@ -45,7 +45,8 @@ jobs:
       - name: Approve all waiting runs for this PR
         run: |
           set -euo pipefail
-
+          echo ${PR}
+          echo ${{ env.PR }} 
           # list waiting runs for PR
           gh api -H "X-GitHub-Api-Version: 2022-11-28" \
             "/repos/${REPO}/actions/runs?event=pull_request&per_page=100" --paginate \
