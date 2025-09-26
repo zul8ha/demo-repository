@@ -1,0 +1,9 @@
+name: demo
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "hello from fork PR"
