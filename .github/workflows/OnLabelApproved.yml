@@ -50,9 +50,9 @@ jobs:
           # list waiting runs for PR
           gh api -H "X-GitHub-Api-Version: 2022-11-28" \
             "/repos/${REPO}/actions/runs?event=pull_request&per_page=100" --paginate \
-          | jq -r --argjson pr "${PR}" '
+          | jq -r --argjson pr "$PR" '
                 .workflow_runs[]
-                | select(.head_repository.fork == true and any(.pull_requests[]?; .number == ${PR}))
+                | select(.head_repository.fork == true and any(.pull_requests[]?; .number == $pr))
                 | .id
               ' \
           # | while read -r RUN_ID; do
