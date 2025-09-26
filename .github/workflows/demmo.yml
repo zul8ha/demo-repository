@@ -2,6 +2,8 @@ name: demo
 on:
   pull_request:
     types: [opened, reopened, ready_for_review, converted_to_draft]
+env:
+  GH_TOKEN: ${{ secrets.READ_ORG_TOKEN }}
 jobs:
   demo:
     runs-on: ubuntu-latest
