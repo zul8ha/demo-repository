@@ -11,6 +11,7 @@ permissions:
   contents: read
 env:
   GH_TOKEN: ${{ secrets.READ_ORG_TOKEN }}
+  ORG: 'zul8ha'
 
 jobs:
   approved:
