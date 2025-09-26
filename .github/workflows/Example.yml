@@ -3,7 +3,8 @@ name: Example Workflow with Warning and File Upload
 on:
   pull_request:
     types: [opened, reopened, ready_for_review, converted_to_draft]
-
+env:
+  GH_TOKEN: ${{ secrets.READ_ORG_TOKEN }}
 jobs:
   build:
     runs-on: ubuntu-latest
