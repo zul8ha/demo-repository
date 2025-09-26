@@ -57,9 +57,9 @@ jobs:
               | .id
             '
           )
-          if [ -n "${RUN_IDS:-}" ]; then
+          if [ -n "${RUN_IDS}" ]; then
             while read -r RUN_ID; do
-              [ -z "$RUN_ID:-" ] && continue
+              [ -z "$RUN_ID" ] && continue
               echo "Approving run $RUN_ID"
               gh api -X POST -H "X-GitHub-Api-Version: 2022-11-28" \
                 "repos/${REPO}/actions/runs/${RUN_ID}/approve" \
