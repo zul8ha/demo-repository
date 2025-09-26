@@ -33,7 +33,6 @@ jobs:
           if [ "$state" != "active" ]; then
               echo "Not an org member (or token lacks read:org)"; exit 1
           fi
-
   trigger-rerun:
     needs: [approved]
     runs-on: ubuntu-latest
@@ -44,70 +43,69 @@ jobs:
       - name: Show context
         run: |
           set -euo pipefail
-          echo "Repo:   ${REPO}"
-          echo "PR #:   ${PR}"
-          echo "Actor:  ${GITHUB_ACTOR}"
-          echo "Event:  ${GITHUB_EVENT_NAME}"
+          echo "Repo: ${REPO}"
+          echo "PR #: ${PR}"
+          echo "Actor: ${GITHUB_ACTOR}"
   
-      - name: gh auth status (which token?) & version
+      - name: Get PR head SHA + fork info
+        id: pr
         run: |
           set -euo pipefail
-          gh --version
-          gh auth status || true
-          gh api rate_limit | jq '.resources.core | {remaining, used, reset}'
+          PR_SHA=$(gh pr view "${PR}" -R "${REPO}" --json headRefOid -q .headRefOid)
+          FORK_REPO=$(gh pr view "${PR}" -R "${REPO}" --json headRepository -q .headRepository.nameWithOwner)
+          FORK_BRANCH=$(gh pr view "${PR}" -R "${REPO}" --json headRefName -q .headRefName)
+          echo "sha=${PR_SHA}" >> "$GITHUB_OUTPUT"
+          echo "fork_repo=${FORK_REPO}" >> "$GITHUB_OUTPUT"
+          echo "fork_branch=${FORK_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "PR head: ${FORK_REPO}@${FORK_BRANCH} (${PR_SHA})"
   
-      - name: List recent PR runs (unfiltered JSON)
+      - name: Fetch recent PR runs (unfiltered)
         run: |
           set -euo pipefail
           gh api -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/${REPO}/actions/runs?event=pull_request&per_page=50" --paginate \
+            "/repos/${REPO}/actions/runs?event=pull_request&per_page=100" --paginate \
             > runs.json
           jq '.total_count as $n | "total_count=\($n)"' runs.json
-          # show a compact table to verify the data you expect is here
           jq -r '
             .workflow_runs[] |
-            [.id, .status, .conclusion, .head_repository.full_name, (.pull_requests|length)] |
+            [.id, .status, .conclusion, .head_repository.full_name, .head_sha] |
             @tsv
-          ' runs.json | sed $'1iID\tSTATUS\tCONCLUSION\tHEAD_REPO\tPR_COUNT'
+          ' runs.json | sed $'1iID\tSTATUS\tCONCLUSION\tHEAD_REPO\tHEAD_SHA'
   
-      - name: Filter runs by PR number (debug view)
+      - name: Filter runs by PR head SHA (robust)
         run: |
           set -euo pipefail
-          # Show which runs actually reference this PR number
-          jq -r --argjson pr "${PR}" '
+          jq -r --arg sha "${{ steps.pr.outputs.sha }}" '
             .workflow_runs[]
-            | select(.pull_requests // [] | map(.number == $pr) | any)
-            | [.id,
-               .head_repository.full_name,
-               (.pull_requests // [] | map(.number) | join(","))]
-            | @tsv
-          ' runs.json \
-          | sed $'1iID\tHEAD_REPO\tPRS' | column -ts $'\t' || true
-  
-      - name: Filter by PR number + fork (the condition you had)
-        run: |
-          set -euo pipefail
-          jq -r --argjson pr "${PR}" '
-            .workflow_runs[]
-            | select(
-                (.head_repository.fork == true) and
-                (.pull_requests // [] | map(.number == $pr) | any)
-              )
+            | select(.head_sha == $sha)
             | .id
-          ' runs.json > candidate_ids.txt || true
-  
-          echo "Candidate count: $(wc -l < candidate_ids.txt)"
-          echo "Candidate IDs:"
+          ' runs.json > candidate_ids.txt
+          echo "Candidates by SHA: $(wc -l < candidate_ids.txt)"
           cat candidate_ids.txt || true
   
-      - name: Approve candidates
-        if: success()
+      - name: (Optional) also ensure it’s from a fork repo
         run: |
           set -euo pipefail
+          jq -r --arg sha "${{ steps.pr.outputs.sha }}" --arg fork "${{ steps.pr.outputs.fork_repo }}" '
+            .workflow_runs[]
+            | select(.head_sha == $sha and .head_repository.full_name == $fork and .head_repository.fork == true)
+            | .id
+          ' runs.json > candidate_ids_fork.txt
+          echo "Candidates by SHA+fork: $(wc -l < candidate_ids_fork.txt)"
+          cat candidate_ids_fork.txt || true
+  
+      - name: Approve candidates
+        run: |
+          set -euo pipefail
+          # choose which list to use:
+          LIST="candidate_ids_fork.txt"
+          [ -s "$LIST" ] || LIST="candidate_ids.txt"
+  
           while read -r RUN_ID; do
             [ -z "${RUN_ID:-}" ] && continue
             echo "Approving run ${RUN_ID}"
             gh api -X POST -H "X-GitHub-Api-Version: 2022-11-28" \
               "repos/${REPO}/actions/runs/${RUN_ID}/approve" \
-            || echo "Skip ${RUN_ID}: not awaiting approval or already approved"
-          done < candidate_ids.txt
+            || echo "Skip ${RUN_ID}: not awaiting approval / already approved"
+          done < "$LIST"
+  
