@@ -38,7 +38,7 @@ jobs:
       - approved
     runs-on: ubuntu-latest
     env:
-      REPO: 'duckdb/duckdb'
+      REPO: 'zul8ha/demo-repository'
       PR: ${{ github.event.pull_request.number }}
     steps:
       - name: Approve all waiting runs for this PR
