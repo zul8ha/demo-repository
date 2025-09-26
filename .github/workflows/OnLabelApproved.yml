@@ -52,7 +52,7 @@ jobs:
             "/repos/${REPO}/actions/runs?event=pull_request&per_page=100" --paginate \
           | jq -r --argjson pr "${PR}" '
                 .workflow_runs[]
-                | select(.head_repository.fork == true and any(.pull_requests[]?; .number == $pr))
+                | select(.head_repository.fork == true and any(.pull_requests[]?; .number == ${PR}))
                 | .id
               ' \
           # | while read -r RUN_ID; do
