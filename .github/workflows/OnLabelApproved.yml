@@ -48,21 +48,17 @@ jobs:
           PR_SHA=$(gh pr view "${PR}" --repo "${REPO}" --json headRefOid --jq .headRefOid)
           
           # list waiting runs for PR
-          RUN_IDS=$(
-            gh api -H "X-GitHub-Api-Version: 2022-11-28" \
-              "/repos/${REPO}/actions/runs?event=pull_request&per_page=100" --paginate \
-            | jq -r --arg sha "$PR_SHA" '
-              .workflow_runs[]
-              | select(.head_sha == $sha and (.head_repository.fork == true))
-              | .id
-            '
-          )
-          if [ -n "${RUN_IDS}" ]; then
-            while read -r RUN_ID; do
+          gh api -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${REPO}/actions/runs?event=pull_request&per_page=100" --paginate \
+          | jq -r --arg sha "$PR_SHA" '
+            .workflow_runs[]
+            | select(.head_sha == $sha and (.head_repository.fork == true))
+            | .id
+          ' \
+          | while read -r RUN_ID; do
               [ -z "$RUN_ID" ] && continue
               echo "Approving run $RUN_ID"
               gh api -X POST -H "X-GitHub-Api-Version: 2022-11-28" \
-                "repos/${REPO}/actions/runs/${RUN_ID}/approve" \
-              || echo "Skip ${RUN_ID}: already approved or not awaiting approval anymore"
-            done <<< "$RUN_IDS"
-          fi
+                "repos/${{ env.REPO }}/actions/runs/$RUN_ID/approve" \
+              || echo "Skip $RUN_ID: already approved or not awaiting approval anymore"
+            done
