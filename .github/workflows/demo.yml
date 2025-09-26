@@ -1,8 +1,0 @@
-# .github/workflows/demo.yml
-name: demo
-on: pull_request
-jobs:
-  demo:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo hello
