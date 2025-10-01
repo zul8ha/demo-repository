@@ -34,31 +34,143 @@ jobs:
               echo "Not an org member (or token lacks read:org)"; exit 1
           fi
   trigger-rerun:
-    needs: 
-      - approved
+    needs: [approved]
     runs-on: ubuntu-latest
     env:
       REPO: 'zul8ha/demo-repository'
       PR: ${{ github.event.pull_request.number }}
     steps:
-      - name: Approve all waiting runs for this PR
+      - name: Show context
         run: |
           set -euo pipefail
-
-          PR_SHA=$(gh pr view "${PR}" --repo "${REPO}" --json headRefOid --jq .headRefOid)
-          
-          # list waiting runs for PR
+          echo "Repo: ${REPO}"
+          echo "PR #: ${PR}"
+          echo "Actor: ${GITHUB_ACTOR}"
+  
+      - name: Get PR head SHA + fork info
+        id: pr
+        run: |
+          set -euo pipefail
+          PR_SHA=$(gh pr view "${PR}" -R "${REPO}" --json headRefOid -q .headRefOid)
+          FORK_REPO=$(gh pr view "${PR}" -R "${REPO}" --json headRepository -q .headRepository.nameWithOwner)
+          FORK_BRANCH=$(gh pr view "${PR}" -R "${REPO}" --json headRefName -q .headRefName)
+          echo "sha=${PR_SHA}" >> "$GITHUB_OUTPUT"
+          echo "fork_repo=${FORK_REPO}" >> "$GITHUB_OUTPUT"
+          echo "fork_branch=${FORK_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "PR head: ${FORK_REPO}@${FORK_BRANCH} (${PR_SHA})"
+  
+      - name: Fetch recent PR runs (unfiltered)
+        run: |
+          set -euo pipefail
           gh api -H "X-GitHub-Api-Version: 2022-11-28" \
             "/repos/${REPO}/actions/runs?event=pull_request&per_page=100" --paginate \
-          | jq -r --arg sha "$PR_SHA" '
+            > runs.json
+          jq '.total_count as $n | "total_count=\($n)"' runs.json
+          jq -r '
+            .workflow_runs[] |
+            [.id, .status, .conclusion, .head_repository.full_name, .head_sha] |
+            @tsv
+          ' runs.json | sed $'1iID\tSTATUS\tCONCLUSION\tHEAD_REPO\tHEAD_SHA'
+  
+      - name: Filter runs by PR head SHA (robust)
+        run: |
+          set -euo pipefail
+          jq -r --arg sha "${{ steps.pr.outputs.sha }}" '
             .workflow_runs[]
-            | select(.head_sha == $sha and (.head_repository.fork == true))
+            | select(.head_sha == $sha)
             | .id
-          ' \
-          | while read -r RUN_ID; do
-              [ -z "$RUN_ID" ] && continue
-              echo "Approving run $RUN_ID"
-              gh api -X POST -H "X-GitHub-Api-Version: 2022-11-28" \
-                "repos/${{ env.REPO }}/actions/runs/$RUN_ID/approve" \
-              || echo "Skip $RUN_ID: already approved or not awaiting approval anymore"
-            done
+          ' runs.json > candidate_ids.txt
+          echo "Candidates by SHA: $(wc -l < candidate_ids.txt)"
+          cat candidate_ids.txt || true
+  
+      - name: (Optional) also ensure it’s from a fork repo
+        run: |
+          set -euo pipefail
+          jq -r --arg sha "${{ steps.pr.outputs.sha }}" --arg fork "${{ steps.pr.outputs.fork_repo }}" '
+            .workflow_runs[]
+            | select(.head_sha == $sha and .head_repository.full_name == $fork and .head_repository.fork == true)
+            | .id
+          ' runs.json > candidate_ids_fork.txt
+          echo "Candidates by SHA+fork: $(wc -l < candidate_ids_fork.txt)"
+          cat candidate_ids_fork.txt || true
+  
+      - name: Approve candidates
+        run: |
+          set -euo pipefail
+          # choose which list to use:
+          LIST="candidate_ids_fork.txt"
+          [ -s "$LIST" ] || LIST="candidate_ids.txt"
+  
+          while read -r RUN_ID; do
+            [ -z "${RUN_ID:-}" ] && continue
+            echo "Approving run ${RUN_ID}"
+            gh api -X POST -H "X-GitHub-Api-Version: 2022-11-28" \
+              "repos/${REPO}/actions/runs/${RUN_ID}/approve" \
+            || echo "Skip ${RUN_ID}: not awaiting approval / already approved"
+          done < "$LIST"
+  
+  
+  # name: Approve fork PR workflows on label
+
+# on:
+#   # pull_request_review:
+#   #   types: [submitted]
+#   pull_request_target:
+#     types: [labeled]
+# permissions:
+#   actions: write
+#   pull-requests: read
+#   contents: read
+# env:
+#   GH_TOKEN: ${{ secrets.READ_ORG_TOKEN }}
+#   ORG: 'zul8ha'
+
+# jobs:
+#   approved:
+#     if: github.event.label.name == 'approved'
+#     runs-on: ubuntu-latest
+#     steps:
+#     - name: Check actor is org member
+#       id: orgcheck
+#       run: |
+#           # exit on error, unset vars are erros, show error message from pipe
+#           set -euo pipefail
+
+#           response=$(curl -sS \
+#           -H "Authorization: Bearer ${GH_TOKEN}" \
+#           -H "Accept: application/vnd.github+json" \
+#           https://api.github.com/orgs/${ORG}/memberships/${GITHUB_ACTOR})
+
+#           state=$(jq -r '.state // empty' <<< "$response")
+#           if [ "$state" != "active" ]; then
+#               echo "Not an org member (or token lacks read:org)"; exit 1
+#           fi
+#   trigger-rerun:
+#     needs: 
+#       - approved
+#     runs-on: ubuntu-latest
+#     env:
+#       REPO: 'zul8ha/demo-repository'
+#       PR: ${{ github.event.pull_request.number }}
+#     steps:
+#       - name: Approve all waiting runs for this PR
+#         run: |
+#           set -euo pipefail
+
+#           PR_SHA=$(gh pr view "${PR}" --repo "${REPO}" --json headRefOid --jq .headRefOid)
+          
+#           # list waiting runs for PR
+#           gh api -H "X-GitHub-Api-Version: 2022-11-28" \
+#             "/repos/${REPO}/actions/runs?event=pull_request&per_page=100" --paginate \
+#           | jq -r --arg sha "$PR_SHA" '
+#             .workflow_runs[]
+#             | select(.head_sha == $sha and (.head_repository.fork == true))
+#             | .id
+#           ' \
+#           | while read -r RUN_ID; do
+#               [ -z "$RUN_ID" ] && continue
+#               echo "Approving run $RUN_ID"
+#               gh api -X POST -H "X-GitHub-Api-Version: 2022-11-28" \
+#                 "repos/${{ env.REPO }}/actions/runs/$RUN_ID/approve" \
+#               || echo "Skip $RUN_ID: already approved or not awaiting approval anymore"
+#             done
