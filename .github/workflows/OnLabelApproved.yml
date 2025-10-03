@@ -22,8 +22,8 @@ permissions:
   pull-requests: read
 
 env:
-  ORG: 'duckdb'
-  REPO: 'duckdb/duckdb'   # апстрим-репо, где бегают ранки
+  ORG: 'zul8ha'
+  REPO: 'zul8ha/demo-repository'   # апстрим-репо, где бегают ранки
   GH_TOKEN: ${{ secrets.DUCKDBLABS_BOT_TOKEN }}
   GITHUB_TOKEN: ${{ secrets.DUCKDBLABS_BOT_TOKEN }}
 
