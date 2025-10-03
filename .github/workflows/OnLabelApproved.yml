@@ -24,8 +24,8 @@ permissions:
 env:
   ORG: 'zul8ha'
   REPO: 'zul8ha/demo-repository'   # апстрим-репо, где бегают ранки
-  GH_TOKEN: ${{ secrets.DUCKDBLABS_BOT_TOKEN }}
-  GITHUB_TOKEN: ${{ secrets.DUCKDBLABS_BOT_TOKEN }}
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.READ_ORG_TOKEN }}
 
 jobs:
   run:
